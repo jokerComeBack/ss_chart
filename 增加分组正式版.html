@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+
+        canvas{
+                    position: absolute;
+                    top: 100px;
+                    left: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div></div>
+	
+<canvas id="canvas" width="800" height="300"></canvas>
+
+
+<script>
+const colorArr = [{dark: 'rgba(131, 215, 174, 1)', light: 'rgba(131, 215, 174, 0.4)'}, {dark:'rgba(107, 151, 242, 1)', light:'rgba(107, 151, 242, 0.4)'}]
+
+	class ssCanvas {
+		constructor(props){
+			const {
+				id,
+				width,
+				height,
+				colors = '#6b97f2'
+			} = props;
+		// canvasInstance.id = 'canvas';
+		// container.appendChild(canvasInstance1)
+		this.id = id;
+		this.width = width;
+		this.height = height;
+		this.colors = colors;
+		this.cylinderWidth = 60;//定义柱状图宽度
+		this.legendWidth = 10;
+		this.legendHeight = 10;
+		this.paddingBottom = 100;
+		this.totalPath = [];
+		this.legendPath = [];
+		this.rectPathInfo = {}
+		}
+
+		createCanvas(){
+
+		}
+		buildData(data){
+			this.originData = data;
+			const newData = data.reduce((total, current)=>{
+				if(Array.isArray(total[current.location])){
+					total[current.location].push(current)
+				}else{
+					total[current.location] = [current];
+				}
+				return total
+			}, {})
+			this.data = Object.values(newData)
+			const legend = this.data[0];
+			this.legend = legend
+		}
+		render(){
+			const container = document.createElement('div');
+			document.body.appendChild(container);
+			const ssCanvas = document.createElement('canvas');
+			ssCanvas.id = 'ss_canvas'
+			container.appendChild(ssCanvas);
+			this._canvas = document.getElementById(ssCanvas.id);
+			this._canvas.width = this.width;
+			this._canvas.height = this.height;
+			this.cols = (this.width - this.cylinderWidth - 30) / this.data.length;//逐个柱子占位宽度和间距共90
+			this.ctx = this._canvas.getContext("2d");
+			this.drawRows();
+			this.drawRects({});
+			this.drawLegend({});
+			ssCanvas.addEventListener('click', (e)=>{
+				const ctx = this.ctx;
+				// let clickType = '';
+				let clickItem = '';
+				ctx.clearRect(0,0,1000,2000)
+				// for(let item =0;)
+				this.legendPath.forEach(item=>{
+				ctx.beginPath();
+				ctx.rect(
+					...item.path
+					);//横坐标为90的倍数，纵坐标为画布高度减去柱子高度
+				const canvasInfo = this._canvas.getBoundingClientRect();
+				const isInrect = ctx.isPointInPath(e.clientX - canvasInfo.left, e.clientY - canvasInfo.top)
+				if(isInrect){
+					// clickType = item.type;
+					clickItem= item;
+				}
+				})
+				this.drawRows();
+				this.drawLegend(clickItem)
+				this.drawRects({clickItem});
+			})
+			ssCanvas.addEventListener('mousemove', (e)=>{
+				const ctx = this.ctx;
+				let hoverType = '';
+				let hoverTypeItem = '';
+				ctx.clearRect(0,0,1000,2000)
+				// for(let item =0;)
+				this.totalPath.forEach(item=>{
+				ctx.beginPath();
+				ctx.rect(
+					...item.path
+					);//横坐标为90的倍数，纵坐标为画布高度减去柱子高度
+				const canvasInfo = this._canvas.getBoundingClientRect();
+				const isInrect = ctx.isPointInPath(e.clientX - canvasInfo.left, e.clientY - canvasInfo.top)
+				if(isInrect){
+					hoverType = item.type;
+				}
+				})
+				this.drawRows();
+				this.drawRects({hoverType});
+				this.drawLegend(hoverTypeItem)
+			})
+		}
+		drawLegend(clickItem){
+			const legendCols = (this.width - this.legendWidth - this.width/ (this.legend.length + 2)) / this.legend.length;
+			const ctx = this.ctx;
+			for(let i =0; i< this.legend.length; i++){
+				const {
+					type
+				} = this.legend[i];
+				ctx.beginPath();
+				const path = [(i+1)*legendCols, this._canvas.height- this.paddingBottom / 2, 10, 10];
+				const show = clickItem.type === type && clickItem.show ? false : true
+				this.legendPath.push({path, type, show});
+				ctx.fillStyle = show ? colorArr[i].dark : colorArr[i].light
+				ctx.rect(
+					...path
+					);
+					
+				ctx.fill();
+				ctx.font = "10px scans-serif";
+				ctx.fillStyle = '#000';
+				let text = ctx.measureText(type);
+				ctx.fillText(type, (i+1)*legendCols + 15, this._canvas.height- this.paddingBottom / 2 + 8);//
+				ctx.closePath();
+			}
+		}
+		drawBackGround(item, sert){
+			const ctx = this.ctx;
+			const backGroundPath = [item[0] - 10, this._canvas.height - this.max - this.paddingBottom, this.cylinderWidth + 20, this.max]
+			ctx.beginPath();
+			ctx.rect(
+				...backGroundPath
+				);//横坐标为90的倍数，纵坐标为画布高度减去柱子高度
+			ctx.fillStyle = '#f0f3f8';
+			ctx.fill();
+			ctx.closePath();
+			this.drawRows();
+			this.drawRects({});
+		}
+		// drawHighLight(type){
+		// 	this.drawRows();
+		// 	this.drawRects(type);
+		// 	this.drawLegend()
+		// }
+		drawRects({hoverType, clickItem = {}}){
+			const ctx = this._canvas.getContext("2d");
+			const { data, cols, cylinderWidth } = this;
+			for (let i = 0;i < data.length; i ++){
+				let totalData = 0;
+				const dataItem = data[i];
+				if(Array.isArray(dataItem)){
+					for(let j =0; j< dataItem.length; j++){
+						const {
+							data,
+							type,
+							location 
+						} = dataItem[j];
+						//绘制柱状图
+						let newData = type === clickItem.type && clickItem.show === true ? 0 : data;
+						totalData += newData;
+						ctx.beginPath();
+						if(hoverType && hoverType !== type){
+							ctx.lineWidth = 0;
+							ctx.fillStyle = colorArr[j].light
+							
+						}else{
+							ctx.fillStyle = colorArr[j].dark;
+						}
+						const path = [(i+1)*cols, this._canvas.height- totalData - this.paddingBottom, cylinderWidth, newData];
+						this.totalPath.push({path, type});
+						if(Array.isArray(this.rectPathInfo[type])){
+							this.rectPathInfo[type].push(path)
+						}else{
+							this.rectPathInfo[type] = [path]
+						}
+						ctx.rect(
+							...path
+							);//横坐标为90的倍数，纵坐标为画布高度减去柱子高度
+							
+						ctx.fill();
+						//绘制柱状图顶部数值
+						ctx.font = "14px scans-serif";
+						ctx.fillStyle = "#9f9f9f";
+						let text = ctx.measureText(location);
+						// ctx.fillText(data[i],(i+1)*cols+(cylinderWidth-text.width)/2,this._canvas.height-data[i]- this.paddingBottom - 5);//数字横坐标为90的倍数加上柱子宽度减去自身宽度的差的一半的和，纵坐标为画布高度减去柱子高度再减去一个合适的值
+						if(j ===0){
+							ctx.fillText(location, (i+1)*cols+(cylinderWidth-text.width)/2, this._canvas.height- this.paddingBottom + 20)
+						}
+						ctx.closePath();
+						ctx.stroke();
+					}
+				}
+				
+			}
+		}
+		drawRows(){
+			const ctx = this._canvas.getContext("2d");
+			const rows = 4;
+				//列步长
+				var rowHeight = Math.floor((this._canvas.height - this.paddingBottom)/ rows);
+				for (var i = 0 ; i < rows; i ++){
+					ctx.beginPath();
+					//绘制行
+					ctx.moveTo(90,this._canvas.height - i*rowHeight - this.paddingBottom);
+					ctx.lineTo(this._canvas.width, this._canvas.height - i*rowHeight - this.paddingBottom);
+					ctx.strokeStyle = '#d9d9d9'
+					//绘制坐标点
+					ctx.font = "15px scans-serif";
+					ctx.fillStyle = "#8c8c8c";
+					var colsNo = ctx.measureText(i*rowHeight);//设置好字体才能计算字体宽度
+					ctx.fillText(i*rowHeight, 85-colsNo.width, this._canvas.height - i*rowHeight - this.paddingBottom);
+					if(i === rows - 1){
+						this.max = i * rowHeight;
+					}
+					ctx.closePath();
+					ctx.stroke();
+				}
+		}
+
+	}
+
+	const data = [
+		{
+			location: '北京',
+			data: 100,
+			type: '图例 1'
+		},
+		{
+			location: '北京',
+			data: 175,
+			type: '图例 2'
+		},
+		{
+			location: '上海',
+			data: 55,
+			type: '图例 1'
+		},
+		{
+			location: '上海',
+			data: 65,
+			type: '图例 2'
+		},
+		{
+			location: '深圳',
+			data: 60,
+			type: '图例 1'
+		},
+		{
+			location: '深圳',
+			data: 60,
+			type: '图例 2' 
+		},
+		{
+			location: '成都',
+			data: 110,
+			type: '图例 1' 
+		},
+		{
+			location: '成都',
+			data: 120,
+			type: '图例 2' 
+		}
+	]
+	const newCanvas = new ssCanvas({
+		id: 'canvas',
+		height: 500,
+		width: 800,
+	})
+	newCanvas.buildData(data)
+	newCanvas.render()
+	
+</script>
+</body>
+</html>
