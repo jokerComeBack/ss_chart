@@ -10,17 +10,12 @@
         position: relative;
         z-index: 100;
       }
-      .box{
-        /* padding-left: 100px; */
-        /* padding-top: 100px; */
-      }
         #tooltip{
           width: 120px;
           height: 50px;
-          /* background-color: blue; */
           position: absolute;
-          /* visibility: hidden; */
-          z-index: 8;
+          visibility: hidden;
+          z-index: 100;
           top: 0px;
           left: 0px;
           transition: left 0.4s cubic-bezier(0.23, 1, 0.32, 1) 0s, top 0.4s cubic-bezier(0.23, 1, 0.32, 1) 0s;
@@ -59,12 +54,12 @@
 </head>
 <body>
     <div class='box'>
-      <div id='container'></div>
+      <!-- <div id='container'></div> -->
     </div>
 <script>
 const colorArr = [{ dark: 'rgba(131, 215, 174, 1)', light: 'rgba(131, 215, 174, 0.4)' }, { dark: 'rgba(107, 151, 242, 1)', light: 'rgba(107, 151, 242, 0.4)' }];
 
-class ssCanvas {
+class SSCanvas {
   constructor(props) {
     const {
       id,
@@ -72,51 +67,54 @@ class ssCanvas {
       height,
       colors = '#6b97f2',
     } = props;
-    // container.appendChild(canvasInstance1)
     this.id = id;
     this.width = width;
     this.height = height;
     this.colors = colors;
-    this.cylinderWidth = 60;//定义柱状图宽度
+    this.cylinderWidth = 60; //定义柱状图宽度
     this.legendWidth = 10;
     this.legendHeight = 10;
     this.paddingBottom = 100;
     this.totalPath = [];
     this.legendPath = [];
-	  const container = document.getElementById('container');
+	  const container = document.createElement('div');
+    document.body.appendChild(container);
+    this.container = container;
     container.style.position = 'relative';
     container.style.width = width + 'px';
     container.style.height = height + 'px';
-    container.addEventListener('click', ()=>{
-      console.log(123)
-    })
-    const ssCanvas = document.createElement('canvas');
-    ssCanvas.id = 'ss_canvas';
-    container.appendChild(ssCanvas);
-    const tooltipDiv = document.createElement('div');
-    tooltipDiv.className = 'tooltip';
-    const tooltipDiv2 = this.tooltipTemplate();
-    tooltipDiv.innerHTML = tooltipDiv2;
-    container.appendChild(tooltipDiv);
-    this._canvas = document.getElementById(ssCanvas.id);
+    const SSCanvas = document.createElement('canvas');
+    SSCanvas.id = id;
+    container.appendChild(SSCanvas);
+    this._canvas = document.getElementById(SSCanvas.id);
+    this.ctx = this._canvas.getContext('2d');
     this._canvas.width = this.width;
     this._canvas.height = this.height;
   }
 
-  tooltipTemplate(){
+  tooltip(show = true){
+    const tooltipDiv = document.createElement('div');
+    tooltipDiv.className = 'tooltip';
+    const tooltipTemplate = this.buildTooltipTemplate();
+    tooltipDiv.innerHTML = tooltipTemplate;
+    this.container.appendChild(tooltipDiv);
+    this.showTooltip = show;
+  }
+
+  buildTooltipTemplate(){
     return `<div id='tooltip'>
-          <div id='location'>北京</div>
+          <div id='location'></div>
           <div id='message'>
             <i id='icon'></i>
-            <span id='type'>男</span>
-            <span id='data'>100</span>
+            <span id='type'></span>
+            <span id='data'></span>
           </div>
       </div>`
   }
   buildData(data) {
     this.originData = data;
 	  this.maxData = 0;
-    const newData = data.reduce((total, current) => {
+    const selfData = data.reduce((total, current) => {
       if (Array.isArray(total[current.location])) {
         total[current.location].push(current);
       } else {
@@ -124,7 +122,7 @@ class ssCanvas {
       }
       return total;
     }, {});
-    this.data = Object.values(newData);
+    this.data = Object.values(selfData);
 	// 计算 Y 轴最大的数字
 	this.maxData = this.data.reduce((total, current)=>{
 		let currentData = eval(current.map(item=>item.data).join('+'))
@@ -138,13 +136,12 @@ class ssCanvas {
 		y: scaleY
 	}
 	this.data = this.data.map(item=>{
-		const newItem = item.map(innerItem=>{
+		return item.map(innerItem=>{
 			return {
 				...innerItem,
 				data: innerItem.data * scaleY
 			}
 		})
-		return newItem;
 	})
     this.legend = this.data[0];
   }
@@ -152,67 +149,53 @@ class ssCanvas {
   render() {
     this.cols = (this.width - this.cylinderWidth - 30) / this.data.length;//逐个柱子占位宽度和间距共90
     this.ctx = this._canvas.getContext('2d');
-    this.drawRows();
-    this.drawRects({});
-    this.drawLegend({});
+    this.paint()
     this._canvas.addEventListener('click', (e) => {
       const ctx = this.ctx;
       let clickItem = '';
       ctx.clearRect(0, 0, this.width, this.height);
       this.legendPath.forEach(item => {
-        ctx.beginPath();
-        ctx.rect(
-          ...item.path
-        );
-        const canvasInfo = this._canvas.getBoundingClientRect();
-        const isInrect = ctx.isPointInPath(e.clientX - canvasInfo.left, e.clientY - canvasInfo.top);
-        if (isInrect) {
+        const isInRect = this.getPointLocation(item.path, e)
+        if (isInRect) {
           clickItem = item;
         }
       });
-      this.drawRows();
-      this.drawLegend(clickItem);
-      this.drawRects({ clickItem });
+      this.paint({clickItem, e})
+      
     });
     this._canvas.addEventListener('mousemove', (e) => {
       const ctx = this.ctx;
-      let hoverType = '';
       let hoverRectItem = {};
       let hoverLegendStyle = 'default';
       ctx.clearRect(0, 0, this.width, this.height);
       this.totalPath.forEach(item => {
-        ctx.beginPath();
-        ctx.rect(
-          ...item.path
-        );
-        const canvasInfo = this._canvas.getBoundingClientRect();
-        const isInrect = ctx.isPointInPath(e.clientX - canvasInfo.left, e.clientY - canvasInfo.top);
-        if (isInrect) {
-          hoverType = item.type;
+        const isInRect = this.getPointLocation(item.path, e)
+        if (isInRect) {
           hoverRectItem = item;
         }
       });
       this.legendPath.forEach(item => {
-        ctx.beginPath();
-        ctx.rect(
-          ...item.path
-        );
-        const canvasInfo = this._canvas.getBoundingClientRect();
-        const isInrect = ctx.isPointInPath(e.clientX - canvasInfo.left, e.clientY - canvasInfo.top);
-        if (isInrect) {
+        const isInRect = this.getPointLocation(item.path, e)
+        if (isInRect) {
           hoverLegendStyle = 'pointer';
         }
       });
       this._canvas.style.cursor = hoverLegendStyle;
-      this.drawRows();
-      this.drawRects({ hoverType });
-      this.drawLegend({});
-      this.drawTooltip(e, hoverRectItem)
+      this.paint({e, hoverRectItem})
     });
   }
-  drawTooltip(e, hoverRectItem){
+
+  getPointLocation(path, e){
+    const ctx = this.ctx;
+    ctx.beginPath();
+        ctx.rect(
+          ...path
+        );
+        const canvasInfo = this._canvas.getBoundingClientRect();
+        return ctx.isPointInPath(e.clientX - canvasInfo.left, e.clientY - canvasInfo.top);
+  }
+  drawTooltip(e, hoverRectItem = {}){
      const tooltip = document.getElementById('tooltip');
-     
     if(hoverRectItem.location){
       const {
         location,
@@ -230,10 +213,8 @@ class ssCanvas {
     }else{
       tooltip.style.visibility = 'hidden';
     }
-    
-
   }
-  drawLegend(clickItem) {
+  drawLegend(clickItem = {}) {
     const legendCols = (this.width - this.legendWidth - this.width / (this.legend.length + 2)) / this.legend.length;
     const ctx = this.ctx;
     for (let i = 0; i < this.legend.length; i++) {
@@ -248,7 +229,6 @@ class ssCanvas {
       ctx.rect(
         ...path
       );
-
       ctx.fill();
       ctx.font = '10px scans-serif';
       ctx.fillStyle = '#000';
@@ -257,24 +237,10 @@ class ssCanvas {
       ctx.closePath();
     }
   }
-
-  drawBackGround(item, sert) {
-    const ctx = this.ctx;
-    const backGroundPath = [item[0] - 10, this._canvas.height - this.max - this.paddingBottom, this.cylinderWidth + 20, this.max];
-    ctx.beginPath();
-    ctx.rect(
-      ...backGroundPath
-    );//横坐标为90的倍数，纵坐标为画布高度减去柱子高度
-    ctx.fillStyle = '#f0f3f8';
-    ctx.fill();
-    ctx.closePath();
-    this.drawRows();
-    this.drawRects({});
-  }
-
-  drawRects({ hoverType, clickItem = {} }) {
-    const ctx = this._canvas.getContext('2d');
+  drawRects({ hoverRectItem = {}, clickItem = {} }) {
     const { data, cols, cylinderWidth } = this;
+    const { type: hoverType } = hoverRectItem;
+    const ctx = this._canvas.getContext('2d');
     for (let i = 0; i < data.length; i++) {
       let totalData = 0;
       const dataItem = data[i];
@@ -286,22 +252,29 @@ class ssCanvas {
             location
           } = dataItem[j];
           //绘制柱状图
-          const newData = type === clickItem.type && clickItem.show === true ? 0 : data;
-          totalData += newData;
+          const selfData = type === clickItem.type && clickItem.show === true ? 0 : data;
+          totalData += selfData;
           ctx.beginPath();
 
           if (hoverType && hoverType !== type) {
-            ctx.lineWidth = 0;
             ctx.fillStyle = colorArr[j].light;
+            if(hoverType){
+              ctx.lineWidth = 0;
+              ctx.strokeStyle = '#fff';
+            }
           } else {
             ctx.fillStyle = colorArr[j].dark;
+            if(hoverType){
+              ctx.lineWidth = 1;
+				      ctx.strokeStyle = '#000';
+            }
           }
-          const path = [(i + 1) * cols, this._canvas.height - totalData - this.paddingBottom, cylinderWidth, newData];
+          const rectHeight = hoverType ? selfData -1 : selfData;
+          const path = [(i + 1) * cols, this._canvas.height - totalData - this.paddingBottom, cylinderWidth, rectHeight];
           this.totalPath.push({ ...dataItem[j], path, color: colorArr[j].dark });
           ctx.rect(
             ...path
-          );//横坐标为90的倍数，纵坐标为画布高度减去柱子高度
-
+          );
           ctx.fill();
           //绘制柱状图顶部数值
           ctx.font = '14px scans-serif';
@@ -310,8 +283,8 @@ class ssCanvas {
           if (j === 0) {
             ctx.fillText(location, (i + 1) * cols + (cylinderWidth - text.width) / 2, this._canvas.height - this.paddingBottom + 20);
           }
-          ctx.closePath();
           ctx.stroke();
+          ctx.closePath();
         }
       }
     }
@@ -333,12 +306,16 @@ class ssCanvas {
       ctx.moveTo(maxYWidth.width, this._canvas.height - i * rowHeight - this.paddingBottom);
       ctx.lineTo(this._canvas.width, this._canvas.height - i * rowHeight - this.paddingBottom);
       ctx.strokeStyle = '#d9d9d9';
-      //绘制坐标点
-      if (i === rows - 1) {
-        this.max = i * rowHeight;
-      }
-      ctx.closePath();
       ctx.stroke();
+      ctx.closePath();
+    }
+  }
+  paint({clickItem, e, hoverRectItem} = {}){
+    this.drawRows();
+    this.drawRects({clickItem, hoverRectItem});
+    this.drawLegend(clickItem);
+    if(this.showTooltip){
+      this.drawTooltip(e, hoverRectItem)
     }
   }
 }
@@ -385,13 +362,14 @@ const data = [
     type: '图例 2'
   }
 ];
-const newCanvas = new ssCanvas({
+const myCanvas = new SSCanvas({
   id: 'container',
   height: 500,
   width: 800,
 });
-newCanvas.buildData(data);
-newCanvas.render();
+myCanvas.tooltip()
+myCanvas.buildData(data);
+myCanvas.render();
 	
 </script>
 </body>
