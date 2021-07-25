@@ -57,7 +57,11 @@
       <!-- <div id='container'></div> -->
     </div>
 <script>
-const colorArr = [{ dark: 'rgba(131, 215, 174, 1)', light: 'rgba(131, 215, 174, 0.4)' }, { dark: 'rgba(107, 151, 242, 1)', light: 'rgba(107, 151, 242, 0.4)' }];
+const colorArr = [
+  { dark: 'rgba(131, 215, 174, 1)', light: 'rgba(131, 215, 174, 0.4)' }, 
+  { dark: 'rgba(107, 151, 242, 1)', light: 'rgba(107, 151, 242, 0.4)' },
+  { dark: '#687795', light: '#cfd4dd' }
+];
 
 class SSCanvas {
   constructor(props) {
@@ -71,10 +75,12 @@ class SSCanvas {
     this.width = width;
     this.height = height;
     this.colors = colors;
-    this.cylinderWidth = 60; //定义柱状图宽度
+    this.cylinderWidth = 60; //定义柱状图宽度初始值
     this.legendWidth = 10;
     this.legendHeight = 10;
     this.paddingBottom = 100;
+    this.paddingTop = 100;
+    this.maxRate = 1.1;
     this.totalPath = [];
     this.legendPath = [];
 	  const container = document.createElement('div');
@@ -126,7 +132,7 @@ class SSCanvas {
 	// 计算 Y 轴最大的数字
 	this.maxData = this.data.reduce((total, current)=>{
 		let currentData = eval(current.map(item=>item.data).join('+'))
-		let maxData = Math.max(currentData, total);
+		let maxData = Math.max(currentData, total) * this.maxRate;
 		return maxData;
 	}, 0)
 	// 计算 Y 轴的缩放比例
@@ -139,50 +145,13 @@ class SSCanvas {
 		return item.map(innerItem=>{
 			return {
 				...innerItem,
+        originData: innerItem.data,
 				data: innerItem.data * scaleY
 			}
 		})
 	})
     this.legend = this.data[0];
-  }
-
-  render() {
-    this.cols = (this.width - this.cylinderWidth - 30) / this.data.length;//逐个柱子占位宽度和间距共90
-    this.ctx = this._canvas.getContext('2d');
-    this.paint()
-    this._canvas.addEventListener('click', (e) => {
-      const ctx = this.ctx;
-      let clickItem = '';
-      ctx.clearRect(0, 0, this.width, this.height);
-      this.legendPath.forEach(item => {
-        const isInRect = this.getPointLocation(item.path, e)
-        if (isInRect) {
-          clickItem = item;
-        }
-      });
-      this.paint({clickItem, e})
-      
-    });
-    this._canvas.addEventListener('mousemove', (e) => {
-      const ctx = this.ctx;
-      let hoverRectItem = {};
-      let hoverLegendStyle = 'default';
-      ctx.clearRect(0, 0, this.width, this.height);
-      this.totalPath.forEach(item => {
-        const isInRect = this.getPointLocation(item.path, e)
-        if (isInRect) {
-          hoverRectItem = item;
-        }
-      });
-      this.legendPath.forEach(item => {
-        const isInRect = this.getPointLocation(item.path, e)
-        if (isInRect) {
-          hoverLegendStyle = 'pointer';
-        }
-      });
-      this._canvas.style.cursor = hoverLegendStyle;
-      this.paint({e, hoverRectItem})
-    });
+    this.cylinderWidth = (this.width - 30) / (this.data.length * 2 - 1)
   }
 
   getPointLocation(path, e){
@@ -201,11 +170,12 @@ class SSCanvas {
         location,
         color,
         type,
-        data
+        data,
+        originData
       } = hoverRectItem
       document.getElementById('location').innerHTML = location;
       document.getElementById('type').innerHTML = type;
-      document.getElementById('data').innerHTML = data;
+      document.getElementById('data').innerHTML = originData;
       document.getElementById('icon').style.background = color;
       tooltip.style.visibility = 'visible';
       tooltip.style.top = e.clientY + 'px'
@@ -238,7 +208,10 @@ class SSCanvas {
     }
   }
   drawRects({ hoverRectItem = {}, clickItem = {} }) {
-    const { data, cols, cylinderWidth } = this;
+    const { data } = this;
+    const cylinderWidth = (this.width - 60 - this.paddingLeft) / (data.length * 2 - 1);
+    const cols = (this.width - cylinderWidth - 30) / data.length ; //逐个柱子占位宽度和间距共90
+
     const { type: hoverType } = hoverRectItem;
     const ctx = this._canvas.getContext('2d');
     for (let i = 0; i < data.length; i++) {
@@ -293,13 +266,14 @@ class SSCanvas {
     const ctx = this._canvas.getContext('2d');
     // 算出 Y轴的区间高
     const rowHeight = Math.floor((this.height - this.paddingBottom) / rows);
-    const scaleInterval = Math.floor((this.maxData - this.paddingBottom) / rows);
+    const scaleInterval = Math.floor((this.maxData / this.maxRate - this.paddingBottom) / rows);
 	// 计算 y 轴文案的最大宽度
     for (let i = 0; i < rows; i++) {
       ctx.beginPath();
 	    ctx.font = '15px scans-serif';
       ctx.fillStyle = '#8c8c8c';
 	    const maxYWidth = ctx.measureText(this.maxData);
+      this.paddingLeft = maxYWidth.width;
       const colsNo = ctx.measureText(i * scaleInterval);//设置好字体才能计算字体宽度
       ctx.fillText(i * scaleInterval, maxYWidth.width - colsNo.width, this._canvas.height - i * rowHeight - this.paddingBottom);
       //绘制行
@@ -318,12 +292,49 @@ class SSCanvas {
       this.drawTooltip(e, hoverRectItem)
     }
   }
+  render() {
+    this.ctx = this._canvas.getContext('2d');
+    this.paint()
+    this._canvas.addEventListener('click', (e) => {
+      const ctx = this.ctx;
+      let clickItem = '';
+      ctx.clearRect(0, 0, this.width, this.height);
+      this.legendPath.forEach(item => {
+        const isInRect = this.getPointLocation(item.path, e)
+        if (isInRect) {
+          clickItem = item;
+        }
+      });
+      this.paint({clickItem, e})
+      
+    });
+    this._canvas.addEventListener('mousemove', (e) => {
+      const ctx = this.ctx;
+      let hoverRectItem = {};
+      let hoverLegendStyle = 'default';
+      ctx.clearRect(0, 0, this.width, this.height);
+      this.totalPath.forEach(item => {
+        const isInRect = this.getPointLocation(item.path, e)
+        if (isInRect) {
+          hoverRectItem = item;
+        }
+      });
+      this.legendPath.forEach(item => {
+        const isInRect = this.getPointLocation(item.path, e)
+        if (isInRect) {
+          hoverLegendStyle = 'pointer';
+        }
+      });
+      this._canvas.style.cursor = hoverLegendStyle;
+      this.paint({e, hoverRectItem})
+    });
+  }
 }
 
 const data = [
   {
     location: '北京',
-    data: 450,
+    data: 420,
     type: '图例 1'
   },
   {
@@ -333,32 +344,32 @@ const data = [
   },
   {
     location: '上海',
-    data: 55,
+    data: 550,
     type: '图例 1'
   },
   {
     location: '上海',
-    data: 65,
+    data: 550,
     type: '图例 2'
   },
   {
     location: '深圳',
-    data: 60,
+    data: 600,
     type: '图例 1'
   },
   {
     location: '深圳',
-    data: 60,
+    data: 600,
     type: '图例 2'
   },
   {
     location: '成都',
-    data: 110,
+    data: 410,
     type: '图例 1'
   },
   {
     location: '成都',
-    data: 120,
+    data: 420,
     type: '图例 2'
   }
 ];
